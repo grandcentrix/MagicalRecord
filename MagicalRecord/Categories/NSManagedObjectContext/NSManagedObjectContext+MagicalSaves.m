@@ -44,19 +44,21 @@
 
         if (completion)
         {
-            completion(NO, nil);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(YES, nil);
+            });
         }
         
         return;
     }
 
-    MRLog(@"→ Saving %@", [self MR_description]);
-    MRLog(@"→ Save Parents? %@", @(saveParentContexts));
-    MRLog(@"→ Save Synchronously? %@", @(syncSave));
-
     void (^saveBlock)(void) = ^{
         NSError *error = nil;
         BOOL     saved = NO;
+
+        MRLog(@"→ Saving %@", [self MR_description]);
+        MRLog(@"→ Save Parents? %@", @(saveParentContexts));
+        MRLog(@"→ Save Synchronously? %@", @(syncSave));
 
         @try
         {
@@ -74,7 +76,9 @@
 
                 if (completion)
                 {
-                    completion(saved, error);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(saved, error);
+                    });
                 }
             }
             else
@@ -82,7 +86,7 @@
                 // If we're the default context, save to disk too (the user expects it to persist)
                 if (self == [[self class] MR_defaultContext])
                 {
-                    [[[self class] MR_rootSavingContext] MR_saveWithOptions:MRSaveSynchronously completion:completion];
+                    [[[self class] MR_rootSavingContext] MR_saveWithOptions:mask completion:completion];
                 }
                 // If we're saving parent contexts, do so
                 else if ((YES == saveParentContexts) && [self parentContext])
@@ -95,7 +99,9 @@
                     MRLog(@"→ Finished saving: %@", [self MR_description]);
                     if (completion)
                     {
-                        completion(saved, error);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(saved, error);
+                        });
                     }
                 }
             }

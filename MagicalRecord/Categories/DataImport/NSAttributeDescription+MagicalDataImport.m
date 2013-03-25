@@ -42,7 +42,7 @@
                 do {
                     NSMutableString *dateFormatKey = [kMagicalRecordImportCustomDateFormatKey mutableCopy];
                     if (index) {
-                        [dateFormatKey appendFormat:@".%d", index];
+                        [dateFormatKey appendFormat:@".%lu", (unsigned long)index];
                     }
                     index++;
                     dateFormat = [[self userInfo] valueForKey:dateFormatKey];
@@ -51,6 +51,16 @@
                 value = convertedValue;
             }
             //            value = adjustDateForDST(value);
+        }
+        else if (attributeType == NSInteger16AttributeType ||
+                 attributeType == NSInteger32AttributeType ||
+                 attributeType == NSInteger64AttributeType ||
+                 attributeType == NSDecimalAttributeType ||
+                 attributeType == NSDoubleAttributeType ||
+                 attributeType == NSFloatAttributeType) {
+            if (![value isKindOfClass:[NSNumber class]] && value != [NSNull null]) {
+                value = numberFromString([value description]);
+            }
         }
     }
     

@@ -8,6 +8,16 @@
 #import "CoreData+MagicalRecord.h"
 #import "NSManagedObjectContext+MagicalRecord.h"
 
+dispatch_queue_t saveQueue(void);
+dispatch_queue_t saveQueue()
+{
+    static dispatch_queue_t serial_save_queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        serial_save_queue = dispatch_queue_create("com.magicalpanda.magicalrecord.serialsavequeue", DISPATCH_QUEUE_SERIAL);
+    });
+    return serial_save_queue;
+}
 
 @implementation MagicalRecord (Actions)
 
@@ -15,24 +25,34 @@
 
 + (void) saveWithBlock:(void(^)(NSManagedObjectContext *localContext))block;
 {
-    [self saveWithBlock:block completion:nil];
+    [self saveWithBlock:block identifier:NSStringFromSelector(_cmd) completion:nil];
+}
+
++ (void) saveWithIdentifier:(NSString *)identifier block:(void(^)(NSManagedObjectContext *))block;
+{
+    [self saveWithBlock:block identifier:identifier completion:nil];
 }
 
 + (void) saveWithBlock:(void(^)(NSManagedObjectContext *localContext))block completion:(MRSaveCompletionHandler)completion;
 {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+    [self saveWithBlock:block identifier:NSStringFromSelector(_cmd) completion:completion];
+}
 
-        NSManagedObjectContext *mainContext  = [NSManagedObjectContext MR_defaultContext];
-        NSManagedObjectContext *localContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSConfinementConcurrencyType];
-        [localContext setParentContext:mainContext];
-
++ (void) saveWithBlock:(void (^)(NSManagedObjectContext *))block identifier:(NSString *)contextWorkingName completion:(MRSaveCompletionHandler)completion;
+{
+    MRLog(@"Dispatching save request: %@", contextWorkingName);
+    dispatch_async(saveQueue(), ^{
+        MRLog(@"%@ save starting", contextWorkingName);
+        NSManagedObjectContext *localContext = [NSManagedObjectContext MR_confinementContext];
+        [localContext MR_setWorkingName:contextWorkingName];
+        
         if (block)
         {
             block(localContext);
         }
 
         [localContext MR_saveWithOptions:MRSaveParentContexts|MRSaveSynchronously completion:completion];
-        
+        MRLog(@"%@ save completed", contextWorkingName);
     });
 }
 
@@ -54,16 +74,21 @@
 
 + (void) saveWithBlockAndWait:(void(^)(NSManagedObjectContext *localContext))block;
 {
-    NSManagedObjectContext *mainContext  = [NSManagedObjectContext MR_defaultContext];
-    NSManagedObjectContext *localContext = [NSManagedObjectContext MR_contextWithParent:mainContext];
+    NSManagedObjectContext *localContext = [NSManagedObjectContext MR_confinementContext];
+    
+    if (block)
+    {
+        block(localContext);
+    }
 
-    [localContext performBlockAndWait:^{
-        if (block) {
-            block(localContext);
-        }
-
-        [localContext MR_saveWithOptions:MRSaveParentContexts|MRSaveSynchronously completion:nil];
-    }];
+    [localContext MR_saveWithOptions:MRSaveParentContexts|MRSaveSynchronously completion:nil];
+//    [localContext performBlockAndWait:^{
+//        if (block) {
+//            block(localContext);
+//        }
+//
+//        [localContext MR_saveWithOptions:MRSaveParentContexts|MRSaveSynchronously completion:nil];
+//    }];
 }
 
 + (void) saveUsingCurrentThreadContextWithBlockAndWait:(void (^)(NSManagedObjectContext *localContext))block;
@@ -92,21 +117,18 @@
 
 + (void) saveInBackgroundWithBlock:(void(^)(NSManagedObjectContext *localContext))block completion:(void(^)(void))completion
 {
-    NSManagedObjectContext *mainContext  = [NSManagedObjectContext MR_defaultContext];
-    NSManagedObjectContext *localContext = [NSManagedObjectContext MR_contextWithParent:mainContext];
+    NSManagedObjectContext *localContext = [NSManagedObjectContext MR_confinementContext];
 
-    [localContext performBlock:^{
-        if (block)
-        {
-            block(localContext);
-        }
-
-        [localContext MR_saveToPersistentStoreAndWait];
-
+    if (block)
+    {
+        block(localContext);
+    }
+ 
+    [localContext MR_saveToPersistentStoreWithCompletion:^(BOOL success, NSError *error) {
         if (completion)
         {
             completion();
-        }
+        } 
     }];
 }
 

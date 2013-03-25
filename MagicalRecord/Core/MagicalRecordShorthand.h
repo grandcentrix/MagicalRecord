@@ -143,8 +143,6 @@
 @end
 @interface NSManagedObjectContext (MagicalThreadingShortHand)
 + (NSManagedObjectContext *) contextForCurrentThread;
-+ (NSManagedObjectContext *) contextThatNotifiesDefaultContextOnMainThread;
-+ (NSManagedObjectContext *) contextThatNotifiesDefaultContextOnMainThreadWithCoordinator:(NSPersistentStoreCoordinator *)coordinator;
 + (void) resetContextForCurrentThread;
 @end
 @interface NSManagedObjectModel (MagicalRecordShortHand)

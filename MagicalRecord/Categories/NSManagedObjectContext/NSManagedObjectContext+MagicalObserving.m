@@ -11,7 +11,6 @@
 #import "MagicalRecord.h"
 #import "MagicalRecord+iCloud.h"
 
-//static void const * kMagicalRecordNotifiesMainContextAssociatedValueKey = @"kMagicalRecordNotifiesMainContextOnSave";
 NSString * const kMagicalRecordDidMergeChangesFromiCloudNotification = @"kMagicalRecordDidMergeChangesFromiCloudNotification";
 
 
@@ -21,6 +20,8 @@ NSString * const kMagicalRecordDidMergeChangesFromiCloudNotification = @"kMagica
 
 - (void) MR_observeContext:(NSManagedObjectContext *)otherContext
 {
+    if (self == otherContext) return;
+
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
 	[notificationCenter addObserver:self
                            selector:@selector(MR_mergeChangesFromNotification:)
@@ -30,6 +31,8 @@ NSString * const kMagicalRecordDidMergeChangesFromiCloudNotification = @"kMagica
 
 - (void) MR_observeContextOnMainThread:(NSManagedObjectContext *)otherContext
 {
+    if (self == otherContext) return;
+
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
 	[notificationCenter addObserver:self
                            selector:@selector(MR_mergeChangesOnMainThread:)
@@ -52,8 +55,8 @@ NSString * const kMagicalRecordDidMergeChangesFromiCloudNotification = @"kMagica
 {
     [self performBlock:^{
         
-        MRLog(@"Merging changes From iCloud %@context%@", 
-              self == [NSManagedObjectContext MR_defaultContext] ? @"*** DEFAULT *** " : @"",
+        MRLog(@"Merging changes From iCloud to %@ %@",
+              [self MR_workingName],
               ([NSThread isMainThread] ? @" *** on Main Thread ***" : @""));
         
         [self mergeChangesFromContextDidSaveNotification:notification];
@@ -68,11 +71,25 @@ NSString * const kMagicalRecordDidMergeChangesFromiCloudNotification = @"kMagica
 
 - (void) MR_mergeChangesFromNotification:(NSNotification *)notification;
 {
-	MRLog(@"Merging changes to %@context%@", 
-          self == [NSManagedObjectContext MR_defaultContext] ? @"*** DEFAULT *** " : @"",
-          ([NSThread isMainThread] ? @" *** on Main Thread ***" : @""));
+    NSManagedObjectContext *fromContext = [notification object];
+    if (fromContext == self) return;
     
-	[self mergeChangesFromContextDidSaveNotification:notification];
+	MRLog(@"Merging changes from %@ to %@ %@",
+          [fromContext MR_workingName], [self MR_workingName],
+          ([NSThread isMainThread] ? @" *** on Main Thread ***" : @""));
+
+    void (^mergeBlock)(void) = ^{
+        [self mergeChangesFromContextDidSaveNotification:notification];
+    };
+    
+    if (self.concurrencyType == NSConfinementConcurrencyType)
+    {
+        mergeBlock();
+    }
+    else
+    {
+        [self performBlock:mergeBlock];
+    }
 }
 
 - (void) MR_mergeChangesOnMainThread:(NSNotification *)notification;
